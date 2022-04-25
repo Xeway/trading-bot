@@ -34,10 +34,14 @@ func main() {
 		log.Fatal(err)
 	}
 
-	handleData(responseData)
+	// the dates are separated by 8h between
+	fundingRates, dates := handleData(responseData)
+
+	average := computeAverage(fundingRates, dates)
+	fmt.Println(average)
 }
 
-func handleData(data []byte) {
+func handleData(data []byte) (map[string][]float64, []int) {
 	type Exchanges struct {
 		Bitmex  []float64 `json:"Bitmex"`
 		Binance []float64 `json:"Binance"`
@@ -70,4 +74,36 @@ func handleData(data []byte) {
 	for i := 0; i < v.NumField(); i++ {
 		fundingRates[v.Type().Field(i).Name] = v.Field(i).Interface().([]float64)
 	}
+
+	return fundingRates, responseObject.Data.DateList
+}
+
+func computeAverage(fundingRates map[string][]float64, dates []int) map[int]float64 {
+	// dateRange := time.Duration(int64((dates[len(dates)-1] - dates[0]) * 1000000))
+
+	// everytime a value is negative, we capture the range
+
+	average := make(map[int][]float64)
+
+	for _, value := range fundingRates {
+		for i := 0; i < len(value); i++ {
+			average[dates[i]] = append(average[dates[i]], value[i])
+		}
+	}
+
+	averageComputed := make(map[int]float64)
+
+	for key, value := range average {
+		averageComputed[key] = averageArray(value)
+	}
+
+	return averageComputed
+}
+
+func averageArray(array []float64) float64 {
+	var total float64
+	for j := 0; j < len(array); j++ {
+		total += array[j]
+	}
+	return total / float64(len(array))
 }
