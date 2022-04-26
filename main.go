@@ -11,9 +11,43 @@ import (
 )
 
 func main() {
+	cFundingRatesSTABLE := make(chan map[string][]float64)
+	cFundingRatesCOIN := make(chan map[string][]float64)
+	cDatesSTABLE := make(chan []int)
+	cDatesCOIN := make(chan []int)
+
+	go requestData("https://open-api.coinglass.com/api/pro/v1/futures/funding_rates_chart?symbol=BTC&type=U", cFundingRatesSTABLE, cDatesSTABLE)
+	go requestData("https://open-api.coinglass.com/api/pro/v1/futures/funding_rates_chart?symbol=BTC&type=C", cFundingRatesCOIN, cDatesCOIN)
+
+	// program will wait until all these variables receive a channel's data
+	fundingRatesSTABLE := <-cFundingRatesSTABLE
+	fundingRatesCOIN := <-cFundingRatesCOIN
+	// the dates are separated by 8h between
+	datesSTABLE := <-cDatesSTABLE
+	datesCOIN := <-cDatesCOIN
+
+	// if the first date of each API fetch is different (maybe because of the time between the two fetches), it means that it will me all up, so we recall the function main
+	if datesSTABLE[0] != datesCOIN[0] || len(datesSTABLE) != len(datesCOIN) {
+		main()
+	}
+
+	fundingRates := make(map[string][]float64)
+
+	// we merge the two funding rates together
+	for key, value := range fundingRatesSTABLE {
+		for i := 0; i < len(value); i++ {
+			fundingRates[key] = append(fundingRates[key], (fundingRatesSTABLE[key][i]+fundingRatesCOIN[key][i])/2)
+		}
+	}
+
+	average := computeAverage(fundingRates, datesSTABLE)
+	fmt.Println(average)
+}
+
+func requestData(url string, cFundingRates chan map[string][]float64, cDates chan []int) {
 	client := &http.Client{}
 
-	req, err := http.NewRequest("GET", "https://open-api.coinglass.com/api/pro/v1/futures/funding_rates_chart?symbol=BTC&type=U", nil)
+	req, err := http.NewRequest("GET", url, nil)
 
 	if err != nil {
 		fmt.Print(err.Error())
@@ -34,14 +68,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// the dates are separated by 8h between
-	fundingRates, dates := handleData(responseData)
-
-	average := computeAverage(fundingRates, dates)
-	fmt.Println(average)
+	handleData(responseData, cFundingRates, cDates)
 }
 
-func handleData(data []byte) (map[string][]float64, []int) {
+func handleData(data []byte, cFundingRates chan map[string][]float64, cDates chan []int) {
 	type Exchanges struct {
 		Bitmex  []float64 `json:"Bitmex"`
 		Binance []float64 `json:"Binance"`
@@ -49,9 +79,9 @@ func handleData(data []byte) (map[string][]float64, []int) {
 		Okex    []float64 `json:"Okex"`
 		Huobi   []float64 `json:"Huobi"`
 		Gate    []float64 `json:"Gate"`
-		FTX     []float64 `json:"FTX"`
-		Bitget  []float64 `json:"Bitget"`
-		DYdX    []float64 `json:"dYdX"`
+		// FTX     []float64 `json:"FTX"`
+		// Bitget  []float64 `json:"Bitget"`
+		// DYdX    []float64 `json:"dYdX"`
 	}
 
 	type Data struct {
@@ -75,7 +105,12 @@ func handleData(data []byte) (map[string][]float64, []int) {
 		fundingRates[v.Type().Field(i).Name] = v.Field(i).Interface().([]float64)
 	}
 
-	return fundingRates, responseObject.Data.DateList
+	// return e.g. ["Binance": [0.001, 0.01, 0.0045], "FTx": []]. And for date : [91659, 1961981, 16198, 654654]
+	cFundingRates <- fundingRates
+	cDates <- responseObject.Data.DateList
+
+	close(cFundingRates)
+	close(cDates)
 }
 
 func computeAverage(fundingRates map[string][]float64, dates []int) map[int]float64 {
