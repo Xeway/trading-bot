@@ -120,6 +120,7 @@ func computeAverage(fundingRates map[string][]float64, dates []int) map[int]floa
 
 	average := make(map[int][]float64)
 
+	// instead of having the name of an exchange as a key, we have the date. E.g: [1651680000000: [-0.32, 0.12], 1651708800000: []]
 	for _, value := range fundingRates {
 		for i := 0; i < len(value); i++ {
 			average[dates[i]] = append(average[dates[i]], value[i])
