@@ -101,13 +101,22 @@ func handleData(data []byte, cFundingRates chan map[string][]float64, cDates cha
 
 	fundingRates := make(map[string][]float64)
 
+	// we want to get the last 2 weeks data
+	dates := responseObject.Data.DateList[len(responseObject.Data.DateList)-(3*7*2)-1 : len(responseObject.Data.DateList)-1]
+
 	for i := 0; i < v.NumField(); i++ {
-		fundingRates[v.Type().Field(i).Name] = v.Field(i).Interface().([]float64)
+		exchangeName := v.Type().Field(i).Name
+		list := v.Field(i).Interface().([]float64)
+
+		// len(dates) == len(list[len(list)-(3*7*2)-1 : len(list)-1])
+		for j := len(list) - len(dates) - 1; j < len(list)-1; j++ {
+			fundingRates[exchangeName] = append(fundingRates[exchangeName], list[j])
+		}
 	}
 
 	// return e.g. ["Binance": [0.001, 0.01, 0.0045], "FTx": []]. And for date : [91659, 1961981, 16198, 654654]
 	cFundingRates <- fundingRates
-	cDates <- responseObject.Data.DateList
+	cDates <- dates
 
 	close(cFundingRates)
 	close(cDates)
